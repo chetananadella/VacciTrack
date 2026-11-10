@@ -3,8 +3,9 @@ import os
 import sys
 import sqlite3
 
-# Ensure backend directory is in Python path
+# Backend directory
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
@@ -15,8 +16,13 @@ try:
 except ImportError:
     pyodbc = None
 
-# Database configuration
-DB_TYPE = "mssql"
+
+# Set USE_SQLITE=true on Render
+USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() in (
+    "true", "1", "yes"
+)
+
+DB_TYPE = "sqlite" if USE_SQLITE else "mssql"
 
 SQLITE_DB_PATH = os.path.abspath(
     os.path.join(
@@ -29,61 +35,64 @@ SQLITE_DB_PATH = os.path.abspath(
 
 
 def _sqlite_connection():
-    """Create SQLite connection."""
+    """Create SQLite database connection."""
 
-    os.makedirs(os.path.dirname(SQLITE_DB_PATH), exist_ok=True)
+    os.makedirs(
+        os.path.dirname(SQLITE_DB_PATH),
+        exist_ok=True
+    )
 
     conn = sqlite3.connect(
         SQLITE_DB_PATH,
-        check_same_thread=False
+        check_same_thread=False,
+        timeout=30
     )
 
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
 
     return conn
 
 
 def get_db_connection(use_master=False):
-    """
-    Connect to SQL Server.
-    If unavailable, use SQLite.
-    """
+    """Connect to SQL Server or SQLite."""
 
     global DB_TYPE
 
-    if pyodbc is not None:
-        try:
-            if use_master:
-                conn_str = (
-                    f"DRIVER={{{Config.DB_DRIVER}}};"
-                    f"SERVER={Config.DB_SERVER};"
-                    "DATABASE=master;"
-                    f"UID={Config.DB_USER};"
-                    f"PWD={Config.DB_PASSWORD};"
-                    "TrustServerCertificate=yes;"
-                )
-            else:
-                conn_str = Config.get_connection_string()
+    if USE_SQLITE or pyodbc is None:
+        DB_TYPE = "sqlite"
+        return _sqlite_connection()
 
-            conn = pyodbc.connect(conn_str, timeout=5)
-            conn.autocommit = True
-
-            DB_TYPE = "mssql"
-            return conn
-
-        except Exception as exc:
-            print(
-                f"[DB Warning] SQL Server unavailable: {exc}. "
-                "Using SQLite fallback."
+    try:
+        if use_master:
+            conn_str = (
+                f"DRIVER={{{Config.DB_DRIVER}}};"
+                f"SERVER={Config.DB_SERVER};"
+                "DATABASE=master;"
+                f"UID={Config.DB_USER};"
+                f"PWD={Config.DB_PASSWORD};"
+                "TrustServerCertificate=yes;"
             )
+        else:
+            conn_str = Config.get_connection_string()
 
-    DB_TYPE = "sqlite"
-    return _sqlite_connection()
+        conn = pyodbc.connect(conn_str, timeout=5)
+        conn.autocommit = True
+
+        DB_TYPE = "mssql"
+        return conn
+
+    except Exception as exc:
+        print(f"[DB Warning] SQL Server unavailable: {exc}")
+        print("[DB] Switching to SQLite.")
+
+        DB_TYPE = "sqlite"
+        return _sqlite_connection()
 
 
 def _prepare_sqlite_query(query):
-    """Convert common SQL Server syntax to SQLite syntax."""
+    """Convert SQL Server query syntax to SQLite."""
 
     query = query.replace("dbo.", "")
     query = query.replace("GETDATE()", "CURRENT_TIMESTAMP")
@@ -99,7 +108,7 @@ def execute_query(
     fetchall=False,
     commit=False
 ):
-    """Execute SQL queries and return dictionary results."""
+    """Execute SQL query and return results."""
 
     global DB_TYPE
 
@@ -107,21 +116,18 @@ def execute_query(
     cursor = conn.cursor()
 
     try:
-
         if DB_TYPE == "sqlite":
             query = _prepare_sqlite_query(query)
 
         cursor.execute(query, params)
 
         if commit:
-
             if DB_TYPE == "sqlite":
                 conn.commit()
 
             result = cursor.rowcount
 
         elif fetchone:
-
             row = cursor.fetchone()
 
             if row is None:
@@ -132,14 +138,12 @@ def execute_query(
                     column[0]
                     for column in cursor.description
                 ]
-
                 result = dict(zip(columns, row))
 
             else:
                 result = dict(row)
 
         elif fetchall:
-
             rows = cursor.fetchall()
 
             if DB_TYPE == "mssql":
@@ -147,7 +151,6 @@ def execute_query(
                     column[0]
                     for column in cursor.description
                 ]
-
                 result = [
                     dict(zip(columns, row))
                     for row in rows
@@ -160,7 +163,6 @@ def execute_query(
                 ]
 
         else:
-
             if DB_TYPE == "sqlite":
                 conn.commit()
 
@@ -169,12 +171,8 @@ def execute_query(
         return result
 
     except Exception as exc:
-
-        print(
-            f"[DB Error] Query execution failed: {exc}\n"
-            f"Query: {query}"
-        )
-
+        print(f"[DB Error] {exc}")
+        print(f"[DB Query] {query}")
         raise
 
     finally:
@@ -183,13 +181,12 @@ def execute_query(
 
 
 def _init_sqlite_db():
-    """Create all application tables in SQLite."""
+    """Create all SQLite tables and indexes."""
 
     conn = _sqlite_connection()
     cursor = conn.cursor()
 
     try:
-
         cursor.executescript("""
 
         CREATE TABLE IF NOT EXISTS Users (
@@ -304,7 +301,7 @@ def _init_sqlite_db():
 
         conn.commit()
 
-        print("[DB Init] SQLite database initialized successfully!")
+        print("[DB Init] SQLite tables initialized successfully.")
 
     finally:
         cursor.close()
@@ -312,44 +309,34 @@ def _init_sqlite_db():
 
 
 def init_db():
-    """
-    Initialize database.
-    Use SQL Server if available; otherwise SQLite.
-    """
+    """Initialize the selected database."""
 
     global DB_TYPE
 
     print("[DB Init] Initializing database...")
 
-    if pyodbc is not None:
+    if USE_SQLITE or pyodbc is None:
+        DB_TYPE = "sqlite"
+        _init_sqlite_db()
+        return
 
-        try:
+    try:
+        conn = pyodbc.connect(
+            Config.get_connection_string(),
+            timeout=5
+        )
 
-            conn = pyodbc.connect(
-                Config.get_connection_string(),
-                timeout=5
-            )
+        conn.close()
 
-            conn.close()
+        DB_TYPE = "mssql"
 
-            DB_TYPE = "mssql"
+        print("[DB Init] SQL Server connected.")
 
-            print(
-                "[DB Init] SQL Server connection is available."
-            )
+    except Exception as exc:
+        print(f"[DB Init] SQL Server unavailable: {exc}")
 
-            return
-
-        except Exception as exc:
-
-            print(
-                f"[DB Init] SQL Server unavailable: {exc}. "
-                "Initializing SQLite."
-            )
-
-    DB_TYPE = "sqlite"
-
-    _init_sqlite_db()
+        DB_TYPE = "sqlite"
+        _init_sqlite_db()
 
 
 if __name__ == "__main__":
