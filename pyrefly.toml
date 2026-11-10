@@ -1,0 +1,9 @@
+# pyrefly.toml – Pyrefly static analysis configuration for VaccTrack
+# Points Pyrefly to the correct interpreter and adds backend/ as an import root,
+# so `from database import get_db_connection` is resolved correctly in the editor.
+
+[python]
+interpreter = "C:\\Users\\Radhika\\AppData\\Local\\Programs\\Python\\Python314\\python.exe"
+
+[search_path]
+extra_paths = ["backend"]
