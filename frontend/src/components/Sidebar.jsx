@@ -35,6 +35,7 @@ const Sidebar = () => {
     { to: '/healthcare/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/healthcare/children', label: 'Children Directory', icon: Search },
     { to: '/healthcare/due', label: 'Due / Overdue List', icon: AlertCircle },
+    { to: '/healthcare/alerts', label: 'Reminders & Alerts', icon: Bell },
     { to: '/healthcare/record', label: 'Record Vaccination', icon: ClipboardCheck },
   ];
 
@@ -44,6 +45,7 @@ const Sidebar = () => {
     { to: '/admin/children', label: 'Manage Children', icon: Baby },
     { to: '/admin/vaccines', label: 'Manage Vaccine Types', icon: Syringe },
     { to: '/admin/records', label: 'All Vaccination Records', icon: CalendarCheck },
+    { to: '/admin/alerts', label: 'Reminders & Alerts', icon: Bell },
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
   ];
 

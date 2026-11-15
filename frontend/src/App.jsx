@@ -83,6 +83,7 @@ function App() {
               <Route path="/healthcare/children/:id" element={<ChildDetailsWorkerPage />} />
               <Route path="/healthcare/record" element={<RecordVaccinationPage />} />
               <Route path="/healthcare/due" element={<DueVaccinationsPage />} />
+              <Route path="/healthcare/alerts" element={<RemindersPage />} />
             </Route>
 
             {/* Admin Protected Routes */}
@@ -93,6 +94,7 @@ function App() {
               <Route path="/admin/vaccines" element={<ManageVaccinesPage />} />
               <Route path="/admin/records" element={<VaccinationRecordsPage />} />
               <Route path="/admin/reports" element={<ReportsAnalyticsPage />} />
+              <Route path="/admin/alerts" element={<RemindersPage />} />
             </Route>
 
             {/* Catch-all fallback */}

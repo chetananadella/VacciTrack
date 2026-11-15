@@ -47,22 +47,21 @@ def create_app():
 
     @app.route('/api/health', methods=['GET'])
     def health_check():
+        from database import DB_TYPE, SQLITE_DB_PATH
         db_status = "connected"
         try:
             conn = get_db_connection()
-            if hasattr(conn, 'close'):
-                conn.close()
-        except Exception as e:
-            db_status = f"disconnected: {e}"
-
+            conn.close()
+        except Exception as exc:
+            db_status = f"disconnected: {exc}"
         return jsonify({
-            "status": "healthy",
+            "status": "healthy" if db_status == "connected" else "degraded",
             "app": "VaccTrack API",
             "database_status": db_status,
-            "database_driver": Config.DB_DRIVER,
-            "database_name": Config.DB_NAME,
-            "database_type": "Microsoft SQL Server"
-        }), 200
+            "database_type": DB_TYPE,
+            "database_name": Config.DB_NAME if DB_TYPE == "mssql" else "SQLite fallback",
+            "sqlite_path": SQLITE_DB_PATH if DB_TYPE == "sqlite" else None
+        }), 200 if db_status == "connected" else 503
 
     @app.errorhandler(404)
     def not_found(error):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getRemindersApi, markReminderReadApi } from '../../services/api';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { Bell, Check, AlertCircle, Info, Mail, MessageSquare } from 'lucide-react';
@@ -7,23 +7,40 @@ const RemindersPage = () => {
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+  const knownUnread = useRef(new Set());
 
-  const fetchReminders = () => {
-    setLoading(true);
+  const fetchReminders = (showAlerts = false) => {
     getRemindersApi()
-      .then((res) => setReminders(res.data || []))
+      .then((res) => {
+        const rows = res.data || [];
+        setReminders(rows);
+        const unread = rows.filter((item) => item.Status === 'Unread');
+        const unreadIds = new Set(unread.map((item) => item.ReminderID));
+        if (showAlerts) {
+          const newlyUnread = unread.filter((item) => !knownUnread.current.has(item.ReminderID));
+          if (newlyUnread.length) {
+            setToast(newlyUnread[0].Message);
+            window.setTimeout(() => setToast(''), 7000);
+          }
+        }
+        knownUnread.current = unreadIds;
+        setError('');
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchReminders();
+    fetchReminders(false);
+    const timer = window.setInterval(() => fetchReminders(true), 20000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const handleMarkRead = async (id) => {
     try {
       await markReminderReadApi(id);
-      fetchReminders();
+      fetchReminders(false);
     } catch (err) {
       alert("Failed to mark reminder read: " + err.message);
     }
@@ -33,6 +50,19 @@ const RemindersPage = () => {
 
   return (
     <div className="page-body">
+      {toast && (
+        <div role="alert" aria-live="assertive" style={{
+          position: 'sticky', top: '12px', zIndex: 1000, marginBottom: '1rem',
+          background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74',
+          borderLeft: '6px solid #ea580c', borderRadius: '12px', padding: '1rem 1.25rem',
+          boxShadow: '0 8px 24px rgba(15,23,42,.12)', fontWeight: 700
+        }}>
+          <div style={{display:'flex', alignItems:'center', gap:'.6rem'}}>
+            <AlertCircle size={20} /> Vaccination Alert
+          </div>
+          <div style={{fontWeight:500, marginTop:'.35rem'}}>{toast}</div>
+        </div>
+      )}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Reminders & Alerts</h1>
         <p className="page-subtitle">In-app notifications for due and upcoming child vaccinations</p>

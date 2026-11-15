@@ -5,6 +5,9 @@ def sync_reminders():
     """
     Auto-generate reminders for Due and Missed vaccinations if not existing.
     """
+    from services.vaccine_service import recalculate_record_statuses
+    recalculate_record_statuses()
+
     query = """
     SELECT 
         vr.RecordID,
